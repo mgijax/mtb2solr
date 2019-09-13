@@ -1,0 +1,6 @@
+/src/mtb2Solr/mtb2solr.properties
+/build
+/dist
+/nbproject
+/lib/CopyLibs
+manifest.mf
