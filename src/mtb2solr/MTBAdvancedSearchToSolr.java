@@ -1,7 +1,5 @@
 package mtb2solr;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.sql.PreparedStatement;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -39,13 +37,24 @@ public class MTBAdvancedSearchToSolr {
     private HashMap<String, String> tumorClassificationParentMap = new HashMap();
     private HashMap<String, ArrayList<String>> tumorMarkerMap = new HashMap();
     private HashMap<String, ArrayList<String>> strainMarkerMap = new HashMap();
+    private HashMap<String, ArrayList<String>> markerSynonymMap = new HashMap();
+    private HashMap<Integer, ArrayList<String>> strainGenotypeMap = new HashMap();
     private HashMap<Integer, ArrayList<String>> strainNameMap = new HashMap();
-    private HashMap<String, String> pubMedMap = new HashMap();
+    private HashMap<String, String> abstractMap = new HashMap();
+    private HashMap<String, ArrayList<String>> authorsMap = new HashMap();
+    private HashMap<String, Integer> yearMap = new HashMap();
+    private HashMap<String, String> titleMap = new HashMap();
+    private HashMap<String, String> journalMap = new HashMap();
+    private HashMap<String, String> citationMap = new HashMap();
+     
+    private HashMap<String, String> referenceIDMap = new HashMap();
     private HashMap<String, String> mutantsMap = new HashMap();
     private HashMap<String, String> humanTissueMap = new HashMap();
     private HashMap<String, String> humanTissueNameMap = new HashMap();
     private HashMap<String, String> excludeTumorClassificationForModels = new HashMap();
-    private HashMap<String, String> singleMutantModels = new HashMap();
+    private HashMap<Integer, String> singleMutantModels = new HashMap();
+    private HashMap<Integer, ArrayList<String>> strainMutationTypeMap = new HashMap();
+    private HashMap<String, ArrayList<String>> tumorMutationTypeMap = new HashMap();
     static Logger logger = Logger.getLogger(MTBAdvancedSearchToSolr.class);
     private static int minFreqNum = 80;
     private static int minColonySize = 20;
@@ -72,11 +81,12 @@ public class MTBAdvancedSearchToSolr {
         BasicConfigurator.configure();
 
         MTBAdvancedSearchToSolr m2s = new MTBAdvancedSearchToSolr();
-
+                
         Collection<SolrInputDocument> docs = m2s.buildDocs();
+                
         Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
 
-        if (docs.size() > 40000) {
+        if (docs != null && docs.size() > 40000) {
 
             System.out.println("Deleting existing docs");
 
@@ -106,14 +116,20 @@ public class MTBAdvancedSearchToSolr {
 
             // create a map from organ to parent organ
             loadParentMaps();
+            
+            loadMarkerSynonyms();
 
             // nixed!    loadTumorMarkers();
             
             loadStrainMarkers();
             
+            loadStrainGenotypes();
+            
             loadStrainNames();
 
             loadPubMedIDs();
+            
+            loadReferences();
 
             loadMinFreqColony();
 
@@ -126,6 +142,10 @@ public class MTBAdvancedSearchToSolr {
             loadHumanTissuesMap();
             
        //     loadSingleMutantModels();
+       
+            loadTumorMutationTypes();
+       
+            loadStrainMutationTypes();
 
             String strSortBy = "tumorclassification";
             int nMaxItems = -1;
@@ -168,24 +188,38 @@ public class MTBAdvancedSearchToSolr {
 
                 String oo = tumorName.substring(0, (tumorName.indexOf(tumor.getTumorClassName())));
 
-                doc.addField("organOrigin", oo.trim());
+                
                 doc.addField("tumorClassification", tumor.getTumorClassName());
-                doc.addField("organAffected", tumor.getOrganAffectedName());
                 doc.addField("strain", tumor.getStrainName());
                 doc.addField("strainKey", tumor.getStrainKey());
-                doc.addField("agentType", tumor.getTreatmentType());
+           ///     doc.addField("agentType", tumor.getTreatmentType());
+           // experiment
+                String[] treatments = tumor.getTreatmentType().split(",");
+                for(String treatment : treatments){
+                    doc.addField("agentType",treatment.trim());
+                }
                 doc.addField("tcParent", tumorClassificationParentMap.get(tumor.getTumorClassName()));;
-                doc.addField("organParent", organParentMap.get(tumor.getOrganOfOriginKey() + "")[0]);
-                doc.addField("organParentKey", organParentMap.get(tumor.getOrganOfOriginKey() + "")[1]);
+                doc.addField("organAffected", tumor.getOrganAffectedName());
+                doc.addField("organOrigin", oo.trim());
                 doc.addField("organOriginKey", tumor.getOrganOfOriginKey());
+                doc.addField("organOriginParent", organParentMap.get(tumor.getOrganOfOriginKey() + "")[0]);
+                doc.addField("organOriginParentKey", organParentMap.get(tumor.getOrganOfOriginKey() + "")[1]);
+                
+                
+                
                 
                 try{
                     
-                    doc.addField("strainName", deHTML(tumor.getStrainName()));
+                    doc.addField("strainNames", deHTML(tumor.getStrainName()));
                     if(strainNameMap.containsKey(new Integer(tumor.getStrainKey()))){
                         for(String name : strainNameMap.get(tumor.getStrainKey())){
-                            doc.addField("strainName",deHTML(name)+" ("+deHTML(tumor.getStrainName())+")");
-               //             System.out.println(deHTML(name)+" ("+deHTML(tumor.getStrainName())+")");
+                            if(!deHTML(name).equals(tumor.getStrainName())){
+                                addUniqueField(doc,"strainNames",deHTML(name)+" ("+tumor.getStrainName()+")");
+                            }else{
+                                // name is same as offical name
+                                addUniqueField(doc,"strainNames",deHTML(name));
+                            }
+               
                             
                         }
                     }
@@ -195,10 +229,24 @@ public class MTBAdvancedSearchToSolr {
                 try {
 
                     for (String ref : tumor.getSortedRefAccIds()) {
-                        if (pubMedMap.get(ref) != null) {
-                            doc.addField("reference", pubMedMap.get(ref));
+                        if (referenceIDMap.get(ref) != null) {
+                            doc.addField("referenceID", referenceIDMap.get(ref));
+                            
                         } else {
-                            doc.addField("reference", ref);
+                            doc.addField("referenceID", ref);
+                        }
+                        if(authorsMap.containsKey(ref)){
+                            for(String author : authorsMap.get(ref)){
+                                doc.addField("authors",author);
+                            }
+                            doc.addField("journal", journalMap.get(ref));
+                            doc.addField("year", yearMap.get(ref));
+                            doc.addField("citation",citationMap.get(ref));
+                            doc.addField("title", titleMap.get(ref));
+                            doc.addField("abstract",abstractMap.get(ref));
+                            
+                            
+                                    
                         }
                     }
 
@@ -219,6 +267,14 @@ public class MTBAdvancedSearchToSolr {
                         doc.addField("strainMarker", marker);
                     }
                 }
+                
+                if (strainGenotypeMap.containsKey(tumor.getStrainKey())) {
+                    for (String genotype : strainGenotypeMap.get(tumor.getStrainKey())) {
+                        addUniqueField(doc,"strainGenotype", genotype);
+                        addUniqueField(doc,"strainGenotypeNoHTML", deHTML(genotype));
+                        //System.out.println("added genotype "+genotype);
+                    }
+                }
 
                 if (mutantsMap.containsKey(tumor.getStrainKey() + "")) {
                     doc.addField("mutant", true);
@@ -227,17 +283,26 @@ public class MTBAdvancedSearchToSolr {
                 if(singleMutantModels.containsKey(tumor.getStrainKey()+"")){
                     doc.addField("singleMutant", true);
                     smCount += tumor.getAllTFKeys().size();
-                    System.out.println("single mutant # "+ smCount);
+          //          System.out.println("single mutant # "+ smCount);
                 }
+                
+                if(strainMutationTypeMap.containsKey(tumor.getStrainKey())){
+                    for(String mutationType : strainMutationTypeMap.get(tumor.getStrainKey())){
+                        addUniqueField(doc,"strainMutationType", mutationType);
+                    }
+                }
+                
+               
+              
 
                 if (!excludeTumorClassificationForModels.containsKey(tumor.getTumorClassificationKey() + "")) {
                     if (humanTissueMap.containsKey(tumor.getOrganOfOriginKey() + "")) {
-                        doc.addField("humanTissue", humanTissueMap.get(tumor.getOrganOfOriginKey() + ""));
+                        addUniqueField(doc,"humanTissue", humanTissueMap.get(tumor.getOrganOfOriginKey() + ""));
                         //        System.out.println("Got humanTissue: "+humanTissueMap.get(tumor.getOrganOfOriginKey()+"")+" for organ origin key "+tumor.getOrganOfOriginKey());
                     }
                     // can't get parent organ key..... BUG! "(Unspecified Organ)" can be for multiple tissues currently always mapped to "soft tissue" BUG! 
                     if (humanTissueNameMap.containsKey(tumor.getOrganAffectedName()) && !tumor.getOrganAffectedName().contains("Unspecified organ")) {
-                        doc.addField("humanTissue", humanTissueNameMap.get(tumor.getOrganAffectedName() + ""));
+                        addUniqueField(doc,"humanTissue", humanTissueNameMap.get(tumor.getOrganAffectedName() + ""));
                         //          System.out.println("Got humanTissue: "+humanTissueNameMap.get(tumor.getOrganAffectedName()+"")+" for organ affected "+tumor.getOrganAffectedName());
                     }
 
@@ -291,6 +356,14 @@ public class MTBAdvancedSearchToSolr {
                              doc.addField("geneExpression", "true");
                         }
                          */
+                        
+                        
+                         if(tumorMutationTypeMap.containsKey(tfKey)){
+                            for(String mutationType : tumorMutationTypeMap.get(tfKey)){
+                                addUniqueField(doc,"tumorMutationType", mutationType);
+                            }
+                         }
+                
 
                     }
 
@@ -302,7 +375,20 @@ public class MTBAdvancedSearchToSolr {
                 doc.addField("freqF", tumor.getFreqFemaleString());
                 doc.addField("freqU", tumor.getFreqUnknownString());
                 doc.addField("freqX", tumor.getFreqMixedString());
-
+                
+                doc.addField("freqNumM", freqToNum(tumor.getFreqMale()));
+                doc.addField("freqNumF", freqToNum(tumor.getFreqFemale()));
+                doc.addField("freqNumU", freqToNum(tumor.getFreqUnknown()));
+                doc.addField("freqNumX", freqToNum(tumor.getFreqMixed()));
+                
+                
+                
+//                System.out.println(tumor.getFreqMaleString()+" "+ freqToNum(tumor.getFreqMale()));
+//                System.out.println(tumor.getFreqFemaleString()+" "+ freqToNum(tumor.getFreqFemale()));
+//                System.out.println(tumor.getFreqUnknownString()+" "+ freqToNum(tumor.getFreqUnknown()));
+//                System.out.println(tumor.getFreqMixedString()+" "+ freqToNum(tumor.getFreqMixed()));
+//                
+                
                 docs.add(doc);
 
             }
@@ -322,6 +408,12 @@ public class MTBAdvancedSearchToSolr {
 
                 if (docCount % 5000 == 0) {
                     System.out.println("Loaded extra data for " + docCount + " records.");
+                }
+                
+                if (docCount % 20000 == 0) {
+                    System.out.println("Resetting postgres connection to prevent timeout");
+                    conn.close();
+                    conn = manager.getConnection();
                 }
 
                 StringBuilder tfks = new StringBuilder("(");
@@ -408,14 +500,34 @@ public class MTBAdvancedSearchToSolr {
                 rs.close();
                 ps.close();
 
-                query = new StringBuffer("select max(freqNum) from TumorFrequency  ");
+                query = new StringBuffer("select max(freqNum),min(freqNum) from TumorFrequency  ");
                 query.append(" where _tumorfrequency_key not in (select _child_key from TumorProgression) and  _tumorfrequency_key in  ").append(tfks.toString());
 
                 ps = conn.prepareStatement(query.toString());
 
                 rs = ps.executeQuery();
                 while (rs.next()) {
-                    doc.addField("freqNum", rs.getFloat(1));
+                    doc.addField("freqMax", rs.getFloat(1));
+                    doc.addField("freqMin", rs.getFloat(2));
+                }
+
+                rs.close();
+                ps.close();
+                
+                
+                
+                query = new StringBuffer("select max(colonySize),min(colonySize) from TumorFrequency  ");
+                query.append(" where  _tumorfrequency_key in  ").append(tfks.toString());
+
+                ps = conn.prepareStatement(query.toString());
+
+                rs = ps.executeQuery();
+                while (rs.next()) {
+                    doc.addField("colonyMax", rs.getFloat(1));
+                    
+                    doc.addField("colonyMin", rs.getFloat(2));
+                    
+                //    System.out.println(rs.getInt(1)+" "+rs.getInt(2)+ " "+tfks.toString());
                 }
 
                 rs.close();
@@ -477,15 +589,17 @@ public class MTBAdvancedSearchToSolr {
 
     private void loadStrainMarkers() {
         
+        
+        
         // this is called germline mutant alleles in the faceted search
         // we should exclude? allele types 22,30 like we do for mutant strains?
-        String sql = "Select distinct symbol, sKey from "
-                + "(SELECT m.symbol as symbol, g._strain_key as sKey  from  Marker m,  AllelePair ap, Genotype g, AlleleMarkerAssoc ama, Allele a "
+         String sql = "Select distinct symbol, name, mKey, sKey from "
+                + "(SELECT m.symbol as symbol, m.name as name, m._marker_key as mKey,  g._strain_key as sKey  from  Marker m,  AllelePair ap, Genotype g, AlleleMarkerAssoc ama, Allele a "
                 + "where m._marker_key = ama._marker_key and "
                 + "ama._allele_key = ap._allele1_key "
                 + "and ap. _allelePair_key = g._allelePair_key and ama._allele_key = a._allele_key and a._alleletype_key not in(22,30) "
                 + "union "
-                + "SELECT m.symbol as symbol , g._strain_key as sKey from  Marker m,  AllelePair ap, Genotype g, AlleleMarkerAssoc ama, Allele a "
+                + "SELECT m.symbol as symbol, m.name as name, m._marker_key as mKey, g._strain_key as sKey from  Marker m,  AllelePair ap, Genotype g, AlleleMarkerAssoc ama, Allele a "
                 + "where m._marker_key = ama._marker_key and "
                 + "ama._allele_key = ap._allele2_key "
                 + "and ap. _allelePair_key = g._allelePair_key and ama._allele_key = a._allele_key and a._alleletype_key not in(22,30)) as uni";
@@ -502,12 +616,101 @@ public class MTBAdvancedSearchToSolr {
             System.out.println("Loading Strain Markers");
             rs = ps.executeQuery();
             while (rs.next()) {
-                if (strainMarkerMap.containsKey(rs.getInt(2) + "")) {
-                    strainMarkerMap.get(rs.getInt(2) + "").add(rs.getString(1));
+                if (strainMarkerMap.containsKey(rs.getInt(4) + "")) {
+                    strainMarkerMap.get(rs.getInt(4) + "").add(rs.getString(1));
+                    strainMarkerMap.get(rs.getInt(4) + "").add(rs.getString(2));
+                    
                 } else {
                     ArrayList<String> list = new ArrayList<String>();
                     list.add(rs.getString(1));
-                    strainMarkerMap.put(rs.getInt(2) + "", list);
+                    list.add(rs.getString(2));
+                    strainMarkerMap.put(rs.getInt(4) + "", list);
+                }
+                
+                if(markerSynonymMap.containsKey(rs.getInt(3)+"")){
+                        for(String syn : markerSynonymMap.get(rs.getInt(3)+"")){
+                            strainMarkerMap.get(rs.getInt(4) + "").add(syn);
+                  //          System.out.println("added marker synonym "+syn);
+                        }
+                    }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private void loadMarkerSynonyms() {
+        
+        // this is called germline mutant alleles in the faceted search
+        // we should exclude? allele types 22,30 like we do for mutant strains?
+        String sql = "select concat(ml.label,' (', m.name,')'), m._marker_key from markerlabel ml, marker m where ml._labeltype_key='MY' and ml._marker_key = m._marker_key;";
+
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            System.out.println("Loading Strain Marker Synonyms");
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                if (markerSynonymMap.containsKey(rs.getInt(2) + "")) {
+                    markerSynonymMap.get(rs.getInt(2) + "").add(rs.getString(1));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(1));
+                    markerSynonymMap.put(rs.getInt(2) + "", list);
+                }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+     private void loadStrainGenotypes() {
+        
+        // this is called germline mutant alleles in the faceted search
+        // we should exclude? allele types 22,30 like we do for mutant strains?
+        String sql = "SELECT g._strain_key, concat(a1.symbol,'/',a2.symbol)  from Allele a1, Genotype g, AllelePair ap left outer join Allele a2 on ( ap._allele2_key = a2._allele_key  and a2._alleletype_key not in(22,30) )"
+                + "WHERE ap._allelePair_key = g._allelePair_key and ap._allele1_key = a1._allele_key "
+                + " and a1._alleletype_key not in(22,30)";
+               
+
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            System.out.println("Loading Strain Genotypes");
+            rs = ps.executeQuery();
+            int key = 0;
+            while (rs.next()) {
+                key = rs.getInt(1);
+                if (strainGenotypeMap.containsKey(key)) {
+                    strainGenotypeMap.get(key).add(rs.getString(2));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(2));
+                    strainGenotypeMap.put(key, list);
                 }
 
             }
@@ -561,6 +764,48 @@ public class MTBAdvancedSearchToSolr {
             e.printStackTrace();
         }
     }
+     
+     
+     
+     private void loadCytogenetics() {
+        
+         
+        String sql =  "SELECT name, _strain_key from strainsynonyms ";
+
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            System.out.println("Loading Strain Names");
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String name = rs.getString(1);
+                
+                if (strainNameMap.containsKey(rs.getInt(2))) {
+                    strainNameMap.get(rs.getInt(2)).add(name);
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(name);
+                    strainNameMap.put(rs.getInt(2), list);
+                }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    } 
+     
+     
      
     private String deHTML(String in){
         return in.replaceAll("<i>", "").replaceAll("</i>", "").replaceAll("<sub>", "").replaceAll("</sub>", "").replaceAll("<sup>", "").replaceAll("</sup>", "");
@@ -633,7 +878,7 @@ public class MTBAdvancedSearchToSolr {
             System.out.println("Loading PubMed IDs");
             rs = ps.executeQuery();
             while (rs.next()) {
-                pubMedMap.put(rs.getString(1), rs.getString(2));
+                referenceIDMap.put(rs.getString(1), rs.getString(2));
 
             }
 
@@ -647,6 +892,55 @@ public class MTBAdvancedSearchToSolr {
         }
 
     }
+    
+    
+    // split this into individual fields then combine them in solr if desired
+    private void loadReferences() {
+
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+            StringBuffer query = new StringBuffer();
+
+            query = new StringBuffer("Select j.accID, authors, journal, year, title, abstracttext, primaryAuthor from Accession j, Reference r where j._object_key = r._reference_key");
+            query.append(" and j._mtbtypes_key = 6 and j._siteinfo_key = 1 ");
+
+            PreparedStatement ps = conn.prepareStatement(query.toString());
+
+            System.out.println("Loading References");
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String refKey = rs.getString(1);
+                if(rs.getString(2)!= null && rs.getString(2).length()>1){
+                    String[] authors = rs.getString(2).split(";");
+                    ArrayList<String> authorList = new ArrayList();
+                    for(String author : authors){
+                        authorList.add(author);
+                    }
+                    authorsMap.put(refKey,authorList);
+                }
+                journalMap.put(refKey,rs.getString(3)+" "+rs.getInt(4));
+                yearMap.put(refKey,rs.getInt(4));
+                titleMap.put(refKey,rs.getString(5));
+                abstractMap.put(refKey, rs.getString(6));
+                citationMap.put(refKey, rs.getString(7)+", "+rs.getString(3)+ " ("+rs.getInt(4)+")");
+            }
+
+            rs.close();
+            ps.close();
+
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+    
+    
 
     private void loadMinFreqColony() {
 
@@ -667,7 +961,7 @@ public class MTBAdvancedSearchToSolr {
             System.out.println("Loading TF matching freq >= " + minFreqNum + " and colonySize >= " + minColonySize);
             rs = ps.executeQuery();
             while (rs.next()) {
-                minFreqColony.put(rs.getString(1), rs.getString(1));
+                minFreqColony.put(rs.getInt(1)+"", rs.getString(1));
 
             }
 
@@ -727,7 +1021,7 @@ public class MTBAdvancedSearchToSolr {
     /* mark TFs as based on mutant on 
     
     The hyperlink to the models in the "All Strains" column would send the 
-    Anatomical System/Organ specifics plus the 80/20 flag as search constrictions to the faceted search.
+    Anatomical System/Organ specifics plus the 80/20 flag as search constraints to the faceted search.
 
     For the number in the "Mutant Strains" hyperlink an additional search restriction should be that 
     the strain is attached to an allele pair (except allele pairs that contain only "Normal" alleles, 
@@ -953,7 +1247,7 @@ public class MTBAdvancedSearchToSolr {
             rs = ps.executeQuery();
             
             while (rs.next()) {
-               singleMutantModels.put(rs.getString(1),rs.getString(1));
+               singleMutantModels.put(rs.getInt(1),rs.getString(1));
 
             }
 
@@ -962,6 +1256,107 @@ public class MTBAdvancedSearchToSolr {
             conn.close();
             System.out.println("Strains identified as single mutants:"+singleMutantModels.size());
             if(true)System.exit(0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+    
+    private void loadStrainMutationTypes(){
+    StringBuilder sql= new StringBuilder("select sub.strainKey, sub.alleleType from (");
+                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
+                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
+                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
+                  sql.append(" ap._allele1_key = a._allele_key and a._alleletype_key = at._alleletype_key ");
+                  sql.append(" union ");
+                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
+                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
+                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
+                  sql.append(" ap._allele2_key = a._allele_key and a._alleletype_key = at._alleletype_key) as sub ");
+    
+     try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
+
+            System.out.println("Loading strain mutation types");
+            rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                while (rs.next()) {
+                if (strainMutationTypeMap.containsKey(rs.getInt(1))) {
+                    strainMutationTypeMap.get(rs.getInt(1)).add(rs.getString(2));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(2));
+                    strainMutationTypeMap.put(rs.getInt(1), list);
+                }
+
+            }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+    
+    
+    private void loadTumorMutationTypes(){
+    StringBuilder sql= new StringBuilder("select sub.tfKey, sub.alleleType from ");
+                sql.append(" (select tg._tumorfrequency_key as tfKey, at.type as alleleType ");
+                sql.append(" from tumorgenetics tg, allelepair ap, allele a, alleletype at ");
+                sql.append(" where tg._allelepair_key = ap._allelepair_key and ");
+                sql.append(" ap._allele1_key = a._allele_key and a._alleletype_key = at._alleletype_key ");
+                sql.append(" union ");
+                sql.append(" select tg._tumorfrequency_key as tfKey, at.type as alleleType ");
+                sql.append(" from tumorgenetics tg, allelepair ap, allele a, alleletype at ");
+                sql.append(" where tg._allelepair_key = ap._allelepair_key and ");
+                sql.append(" ap._allele2_key = a._allele_key and a._alleletype_key = at._alleletype_key");
+                sql.append(" union ");
+                sql.append(" select tgc._tumorfrequency_key as tfKey, at.type as alleleType ");
+                sql.append(" from tumorgeneticchanges tgc, alleletype at ");
+                sql.append(" where tgc._alleletype_key = at._alleletype_key) as sub");
+    
+     try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
+
+            System.out.println("Loading tumor mutation types");
+            rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                while (rs.next()) {
+                if (tumorMutationTypeMap.containsKey(rs.getInt(1)+"")) {
+                    tumorMutationTypeMap.get(rs.getInt(1)+"").add(rs.getString(2));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(2));
+                    tumorMutationTypeMap.put(rs.getInt(1)+"", list);
+                }
+                
+                
+
+            }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -985,5 +1380,67 @@ public class MTBAdvancedSearchToSolr {
         manager.setJdbcUsername(mtb_jdbc_user);
 
        
+    }
+    
+    
+    private void addUniqueField(SolrInputDocument doc, String name, String value){
+        Collection<Object> values = doc.getFieldValues(name);
+        if(values == null || !values.contains(value)){
+            doc.addField(name, value);
+        }
+        
+    };
+    
+    private Double freqToNum(Collection<String> freaks){
+        if(freaks.size() ==0) return null;
+        Double max =0d,test = 0d;
+        for(String freq : freaks){
+            test = freqToDouble(freq);
+            if(max < test ){
+                max = test;
+            }
+        }
+        return max;
+        
+        
+    }
+    
+    // sadly copied from MTBStrainTumorSummaryDTO
+    public static double freqToDouble(String freq) {
+        double ret = -1.0;
+
+        try {
+            ret = Double.parseDouble(freq);
+        } catch (NumberFormatException nfe) {
+            // do nothing
+        } catch (Exception e) {
+            // do nothing
+        }
+
+        if (ret > 0) {
+            return ret;
+        }
+
+        String comp = freq.toLowerCase();
+
+        if ("very high".equals(comp)) {
+            ret = 81.0;
+        } else if ("high".equals(comp)) {
+            ret = 51.0;
+        } else if ("moderate".equals(comp)) {
+            ret = 31.0;
+        } else if ("low".equals(comp)) {
+            ret = 19.0;
+         } else if ("very low".equals(comp)) {
+            ret = 9.0;
+        } else if ("sporadic".equals(comp)) {
+            ret = 0.9;
+        } else if ("observed".equals(comp)) {
+            ret = 0.1;
+        } else {
+            ret = 0.0;
+        }
+
+        return ret;
     }
 }
