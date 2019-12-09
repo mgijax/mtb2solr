@@ -281,7 +281,7 @@ public class MTBAdvancedSearchToSolr {
                 
                 if(singleMutantModels.containsKey(tumor.getStrainKey()+"")){
                     doc.addField("singleMutant", true);
-                    smCount += tumor.getAllTFKeys().size();
+                   
           //          System.out.println("single mutant # "+ smCount);
                 }
                 
