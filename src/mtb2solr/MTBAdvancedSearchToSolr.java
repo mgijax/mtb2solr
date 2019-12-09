@@ -106,8 +106,7 @@ public class MTBAdvancedSearchToSolr {
 
     private Collection<SolrInputDocument> buildDocs() {
         
-        int smCount =0;
-
+      
         ArrayList<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
 
         try {
@@ -918,7 +917,7 @@ public class MTBAdvancedSearchToSolr {
                     String[] authors = rs.getString(2).split(";");
                     ArrayList<String> authorList = new ArrayList();
                     for(String author : authors){
-                        authorList.add(author);
+                        authorList.add(author.trim());
                     }
                     authorsMap.put(refKey,authorList);
                 }
