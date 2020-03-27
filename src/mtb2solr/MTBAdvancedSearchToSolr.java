@@ -31,6 +31,8 @@ import org.apache.log4j.*;
  * test2.html /usr/local/mgi/mtb/solr/solr-5.1.0/server/solr-webapp/webapp
  */
 public class MTBAdvancedSearchToSolr {
+    
+    // there is some reason to use strings
 
    
     private HashMap<String, String[]> organParentMap = new HashMap();
@@ -38,8 +40,9 @@ public class MTBAdvancedSearchToSolr {
     private HashMap<String, ArrayList<String>> tumorMarkerMap = new HashMap();
     private HashMap<String, ArrayList<String>> strainMarkerMap = new HashMap();
     private HashMap<String, ArrayList<String>> markerSynonymMap = new HashMap();
-    private HashMap<Integer, ArrayList<String>> strainGenotypeMap = new HashMap();
-    private HashMap<Integer, ArrayList<String>> strainNameMap = new HashMap();
+    private HashMap<String, ArrayList<String>> strainGenotypeMap = new HashMap();
+    private HashMap<String, ArrayList<String>> strainAlleleMap = new HashMap();
+    private HashMap<String, ArrayList<String>> strainNameMap = new HashMap();
     private HashMap<String, String> abstractMap = new HashMap();
     private HashMap<String, ArrayList<String>> authorsMap = new HashMap();
     private HashMap<String, Integer> yearMap = new HashMap();
@@ -122,6 +125,8 @@ public class MTBAdvancedSearchToSolr {
             
             loadStrainMarkers();
             
+            loadStrainAlleles();
+            
             loadStrainGenotypes();
             
             loadStrainNames();
@@ -191,8 +196,8 @@ public class MTBAdvancedSearchToSolr {
                 doc.addField("tumorClassification", tumor.getTumorClassName());
                 doc.addField("strain", tumor.getStrainName());
                 doc.addField("strainKey", tumor.getStrainKey());
-           ///     doc.addField("agentType", tumor.getTreatmentType());
-           // experiment
+           
+                
                 String[] treatments = tumor.getTreatmentType().split(",");
                 for(String treatment : treatments){
                     doc.addField("agentType",treatment.trim());
@@ -267,6 +272,16 @@ public class MTBAdvancedSearchToSolr {
                     }
                 }
                 
+                // ideally these go into a seperate field then are combined in solr for the genes and alleles facet
+                // but not now, not now.
+                if (strainAlleleMap.containsKey(tumor.getStrainKey() + "")) {
+                    for (String allele : strainAlleleMap.get(tumor.getStrainKey() + "")) {
+                        // for now keep the HTML markup in the alleles
+                        doc.addField("strainMarker", allele);
+                        
+                    }
+                }
+                
                 if (strainGenotypeMap.containsKey(tumor.getStrainKey())) {
                     for (String genotype : strainGenotypeMap.get(tumor.getStrainKey())) {
                         addUniqueField(doc,"strainGenotype", genotype);
@@ -290,9 +305,7 @@ public class MTBAdvancedSearchToSolr {
                         addUniqueField(doc,"strainMutationType", mutationType);
                     }
                 }
-                
                
-              
 
                 if (!excludeTumorClassificationForModels.containsKey(tumor.getTumorClassificationKey() + "")) {
                     if (humanTissueMap.containsKey(tumor.getOrganOfOriginKey() + "")) {
@@ -374,19 +387,23 @@ public class MTBAdvancedSearchToSolr {
                 doc.addField("freqF", tumor.getFreqFemaleString());
                 doc.addField("freqU", tumor.getFreqUnknownString());
                 doc.addField("freqX", tumor.getFreqMixedString());
+                doc.addField("freqAll", tumor.getFreqAllString());
                 
-                doc.addField("freqNumM", freqToNum(tumor.getFreqMale()));
-                doc.addField("freqNumF", freqToNum(tumor.getFreqFemale()));
-                doc.addField("freqNumU", freqToNum(tumor.getFreqUnknown()));
-                doc.addField("freqNumX", freqToNum(tumor.getFreqMixed()));
+                doc.addField("freqNumM", maxFreqsToNum(tumor.getFreqMale()));
+                doc.addField("freqNumF", maxFreqsToNum(tumor.getFreqFemale()));
+                doc.addField("freqNumU", maxFreqsToNum(tumor.getFreqUnknown()));
+                doc.addField("freqNumX", maxFreqsToNum(tumor.getFreqMixed()));
+                
+               
                 
                 
-                
-//                System.out.println(tumor.getFreqMaleString()+" "+ freqToNum(tumor.getFreqMale()));
-//                System.out.println(tumor.getFreqFemaleString()+" "+ freqToNum(tumor.getFreqFemale()));
-//                System.out.println(tumor.getFreqUnknownString()+" "+ freqToNum(tumor.getFreqUnknown()));
-//                System.out.println(tumor.getFreqMixedString()+" "+ freqToNum(tumor.getFreqMixed()));
-//                
+//                System.out.println(tumor.getFreqMaleString()+" "+ maxFreqsToNum(tumor.getFreqMale()));
+//                System.out.println(tumor.getFreqFemaleString()+" "+ maxFreqsToNum(tumor.getFreqFemale()));
+//                System.out.println(tumor.getFreqUnknownString()+" "+ maxFreqsToNum(tumor.getFreqUnknown()));
+//                System.out.println(tumor.getFreqMixedString()+" "+ maxFreqsToNum(tumor.getFreqMixed()));
+//                System.out.println(tumor.getFreqAllString());
+//                System.out.println();System.out.println();
+
                 
                 docs.add(doc);
 
@@ -681,6 +698,102 @@ public class MTBAdvancedSearchToSolr {
         }
     }
     
+    private void loadStrainMutationTypes(){
+    StringBuilder sql= new StringBuilder("select sub.strainKey, sub.alleleType from (");
+                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
+                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
+                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
+                  sql.append(" ap._allele1_key = a._allele_key and a._alleletype_key = at._alleletype_key ");
+                  sql.append(" union ");
+                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
+                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
+                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
+                  sql.append(" ap._allele2_key = a._allele_key and a._alleletype_key = at._alleletype_key) as sub ");
+    
+     try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
+
+            System.out.println("Loading strain mutation types");
+            rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                while (rs.next()) {
+                if (strainMutationTypeMap.containsKey(rs.getInt(1))) {
+                    strainMutationTypeMap.get(rs.getInt(1)).add(rs.getString(2));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(2));
+                    strainMutationTypeMap.put(rs.getInt(1), list);
+                }
+
+            }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+    
+     private void loadStrainAlleles() {
+        
+        // this is called germline mutant alleles in the faceted search
+        // we should exclude? allele types 22,30 like we do for mutant strains?
+        
+	 String sql = "SELECT distinct strainKey, symbol from ( "
+		+ " SELECT g._strain_key as strainKey, a.symbol as symbol  from Allele a, Genotype g, AllelePair ap "
+                + "WHERE ap._allelePair_key = g._allelePair_key and ap._allele1_key = a._allele_key "
+                + " and a._alleletype_key not in(22,30)"
+		+ " union "
+		+ "SELECT g._strain_key as strainKey, a.symbol as symbol  from Allele a, Genotype g, AllelePair ap "
+                + "WHERE ap._allelePair_key = g._allelePair_key and ap._allele2_key = a._allele_key "
+                + " and a._alleletype_key not in(22,30)) as uni";
+               
+                   
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            System.out.println("Loading Strain Alleles");
+            rs = ps.executeQuery();
+            String key = "0";
+            while (rs.next()) {
+                key = rs.getInt(1)+"";
+                if (strainAlleleMap.containsKey(key)) {
+                    strainAlleleMap.get(key).add(rs.getString(2));
+                } else {
+                    ArrayList<String> list = new ArrayList<String>();
+                    list.add(rs.getString(2));
+                    strainAlleleMap.put(key, list);
+                }
+
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    
      private void loadStrainGenotypes() {
         
         // this is called germline mutant alleles in the faceted search
@@ -688,8 +801,9 @@ public class MTBAdvancedSearchToSolr {
         String sql = "SELECT g._strain_key, concat(a1.symbol,'/',a2.symbol)  from Allele a1, Genotype g, AllelePair ap left outer join Allele a2 on ( ap._allele2_key = a2._allele_key  and a2._alleletype_key not in(22,30) )"
                 + "WHERE ap._allelePair_key = g._allelePair_key and ap._allele1_key = a1._allele_key "
                 + " and a1._alleletype_key not in(22,30)";
-               
-
+        
+	        
+                   
         try {
             DAOManagerMTB manager = DAOManagerMTB.getInstance();
             manager.getConnection();
@@ -701,9 +815,9 @@ public class MTBAdvancedSearchToSolr {
 
             System.out.println("Loading Strain Genotypes");
             rs = ps.executeQuery();
-            int key = 0;
+            String key = "0";
             while (rs.next()) {
-                key = rs.getInt(1);
+                key = rs.getInt(1)+"";
                 if (strainGenotypeMap.containsKey(key)) {
                     strainGenotypeMap.get(key).add(rs.getString(2));
                 } else {
@@ -745,12 +859,12 @@ public class MTBAdvancedSearchToSolr {
             while (rs.next()) {
                 String name = rs.getString(1);
                 
-                if (strainNameMap.containsKey(rs.getInt(2))) {
-                    strainNameMap.get(rs.getInt(2)).add(name);
+                if (strainNameMap.containsKey(rs.getInt(2)+"")) {
+                    strainNameMap.get(rs.getInt(2)+"").add(name);
                 } else {
                     ArrayList<String> list = new ArrayList<String>();
                     list.add(name);
-                    strainNameMap.put(rs.getInt(2), list);
+                    strainNameMap.put(rs.getInt(2)+"", list);
                 }
 
             }
@@ -766,11 +880,11 @@ public class MTBAdvancedSearchToSolr {
      
      
      
-     private void loadCytogenetics() {
-        
-         
+     private void loadStrainSynonyms() {
+     
+     
         String sql =  "SELECT name, _strain_key from strainsynonyms ";
-
+     
         try {
             DAOManagerMTB manager = DAOManagerMTB.getInstance();
             manager.getConnection();
@@ -785,12 +899,12 @@ public class MTBAdvancedSearchToSolr {
             while (rs.next()) {
                 String name = rs.getString(1);
                 
-                if (strainNameMap.containsKey(rs.getInt(2))) {
-                    strainNameMap.get(rs.getInt(2)).add(name);
+                if (strainNameMap.containsKey(rs.getInt(2)+"")) {
+                    strainNameMap.get(rs.getInt(2)+"").add(name);
                 } else {
                     ArrayList<String> list = new ArrayList<String>();
                     list.add(name);
-                    strainNameMap.put(rs.getInt(2), list);
+                    strainNameMap.put(rs.getInt(2)+"", list);
                 }
 
             }
@@ -807,7 +921,11 @@ public class MTBAdvancedSearchToSolr {
      
      
     private String deHTML(String in){
-        return in.replaceAll("<i>", "").replaceAll("</i>", "").replaceAll("<sub>", "").replaceAll("</sub>", "").replaceAll("<sup>", "").replaceAll("</sup>", "");
+        String out =  in.replaceAll("<i>", "").replaceAll("</i>", "").replaceAll("<sub>", "").replaceAll("</sub>", "").replaceAll("<sup>", "").replaceAll("</sup>", "");
+        if(out.contains("<") || out.contains(">")){
+            System.out.println("THIS MAY HAVE HTML :"+out +" was: "+in);
+        }
+        return out;
     }
 
     private void loadParentMaps() {
@@ -1261,52 +1379,6 @@ public class MTBAdvancedSearchToSolr {
 
     }
     
-    private void loadStrainMutationTypes(){
-    StringBuilder sql= new StringBuilder("select sub.strainKey, sub.alleleType from (");
-                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
-                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
-                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
-                  sql.append(" ap._allele1_key = a._allele_key and a._alleletype_key = at._alleletype_key ");
-                  sql.append(" union ");
-                  sql.append("select g._strain_key as strainKey, at.type as alleleType from ");
-                  sql.append("genotype g, allelepair ap, allele a, alleletype at ");
-                  sql.append(" where g._allelepair_key = ap._allelepair_key and ");
-                  sql.append(" ap._allele2_key = a._allele_key and a._alleletype_key = at._alleletype_key) as sub ");
-    
-     try {
-            DAOManagerMTB manager = DAOManagerMTB.getInstance();
-            manager.getConnection();
-
-            Connection conn = manager.getConnection();
-            ResultSet rs = null;
-
-            PreparedStatement ps = conn.prepareStatement(sql.toString());
-
-            System.out.println("Loading strain mutation types");
-            rs = ps.executeQuery();
-            
-            while (rs.next()) {
-                while (rs.next()) {
-                if (strainMutationTypeMap.containsKey(rs.getInt(1))) {
-                    strainMutationTypeMap.get(rs.getInt(1)).add(rs.getString(2));
-                } else {
-                    ArrayList<String> list = new ArrayList<String>();
-                    list.add(rs.getString(2));
-                    strainMutationTypeMap.put(rs.getInt(1), list);
-                }
-
-            }
-
-            }
-
-            rs.close();
-            ps.close();
-            conn.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-    }
     
     
     private void loadTumorMutationTypes(){
@@ -1390,7 +1462,7 @@ public class MTBAdvancedSearchToSolr {
         
     };
     
-    private Double freqToNum(Collection<String> freaks){
+    private Double maxFreqsToNum(Collection<String> freaks){
         if(freaks.size() ==0) return null;
         Double max =0d,test = 0d;
         for(String freq : freaks){
