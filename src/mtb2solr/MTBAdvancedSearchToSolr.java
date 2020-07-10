@@ -71,7 +71,7 @@ public class MTBAdvancedSearchToSolr {
     public static void main(String[] args) {
 
         
-        Logger.getRootLogger().setLevel(Level.ERROR);
+   //     Logger.getRootLogger().setLevel(Level.ERROR);
         
         try{
             props.load(MTBAdvancedSearchToSolr.class.getResourceAsStream("mtb2solr.properties")); 
@@ -87,7 +87,8 @@ public class MTBAdvancedSearchToSolr {
                 
         Collection<SolrInputDocument> docs = m2s.buildDocs();
                 
-        Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
+  
+          Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
 
         if (docs != null && docs.size() > 40000) {
 
@@ -192,8 +193,13 @@ public class MTBAdvancedSearchToSolr {
 
                 String oo = tumorName.substring(0, (tumorName.indexOf(tumor.getTumorClassName())));
 
+                String tClassification = tumor.getTumorClassName();
+                if(tClassification.indexOf("-") == -1){
+                    tClassification += " - no subtype";
+                    System.out.println(tClassification);
+                }
                 
-                doc.addField("tumorClassification", tumor.getTumorClassName());
+                doc.addField("tumorClassification", tClassification);
                 doc.addField("strain", tumor.getStrainName());
                 doc.addField("strainKey", tumor.getStrainKey());
            
@@ -422,11 +428,11 @@ public class MTBAdvancedSearchToSolr {
             for (SolrInputDocument doc : docs) {
                 docCount++;
 
-                if (docCount % 5000 == 0) {
+                if (docCount % 50 == 0) {
                     System.out.println("Loaded extra data for " + docCount + " records.");
                 }
                 
-                if (docCount % 20000 == 0) {
+                if (docCount % 2000 == 0) {
                     System.out.println("Resetting postgres connection to prevent timeout");
                     conn.close();
                     conn = manager.getConnection();
@@ -1043,6 +1049,8 @@ public class MTBAdvancedSearchToSolr {
                 yearMap.put(refKey,rs.getInt(4));
                 titleMap.put(refKey,rs.getString(5));
                 abstractMap.put(refKey, rs.getString(6));
+                
+                // what is this used for should be shortCitation from reference table
                 citationMap.put(refKey, rs.getString(7)+", "+rs.getString(3)+ " ("+rs.getInt(4)+")");
             }
 
