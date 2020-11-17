@@ -43,6 +43,7 @@ public class MTBAdvancedSearchToSolr {
     private HashMap<String, ArrayList<String>> strainGenotypeMap = new HashMap();
     private HashMap<String, ArrayList<String>> strainAlleleMap = new HashMap();
     private HashMap<String, ArrayList<String>> strainNameMap = new HashMap();
+    private HashMap<String, String> strainFamilyKeyMap = new HashMap();
     private HashMap<String, String> abstractMap = new HashMap();
     private HashMap<String, ArrayList<String>> authorsMap = new HashMap();
     private HashMap<String, Integer> yearMap = new HashMap();
@@ -71,7 +72,7 @@ public class MTBAdvancedSearchToSolr {
     public static void main(String[] args) {
 
         
-   //     Logger.getRootLogger().setLevel(Level.ERROR);
+        Logger.getRootLogger().setLevel(Level.ERROR);
         
         try{
             props.load(MTBAdvancedSearchToSolr.class.getResourceAsStream("mtb2solr.properties")); 
@@ -129,6 +130,8 @@ public class MTBAdvancedSearchToSolr {
             loadStrainAlleles();
             
             loadStrainGenotypes();
+            
+            loadStrainFamilyKeys();
             
             loadStrainNames();
 
@@ -194,14 +197,11 @@ public class MTBAdvancedSearchToSolr {
                 String oo = tumorName.substring(0, (tumorName.indexOf(tumor.getTumorClassName())));
 
                 String tClassification = tumor.getTumorClassName();
-                if(tClassification.indexOf("-") == -1){
-                    tClassification += " - no subtype";
-                    System.out.println(tClassification);
-                }
                 
                 doc.addField("tumorClassification", tClassification);
                 doc.addField("strain", tumor.getStrainName());
                 doc.addField("strainKey", tumor.getStrainKey());
+                doc.addField("strainFamilyKey", strainFamilyKeyMap.get(tumor.getStrainKey()));
            
                 
                 String[] treatments = tumor.getTreatmentType().split(",");
@@ -913,6 +913,35 @@ public class MTBAdvancedSearchToSolr {
                     strainNameMap.put(rs.getInt(2)+"", list);
                 }
 
+            }
+
+            rs.close();
+            ps.close();
+            conn.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    } 
+     
+      private void loadStrainFamilyKeys() {
+     
+     
+        String sql =  "SELECT  _strain_key, _strainfamily_key from strain";
+     
+        try {
+            DAOManagerMTB manager = DAOManagerMTB.getInstance();
+            manager.getConnection();
+
+            Connection conn = manager.getConnection();
+            ResultSet rs = null;
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            System.out.println("Loading Strain Family Keys");
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                    strainFamilyKeyMap.put(rs.getInt(1)+"",rs.getInt(2)+"");
             }
 
             rs.close();

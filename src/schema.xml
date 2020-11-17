@@ -120,12 +120,14 @@
    <field name="organAffected" type="string" indexed="true" stored="true"/>
    <field name="strain" type="string" indexed="true" stored="true"/>
    <field name="strainKey" type="int" indexed="true" stored="true"/>
+   <field name="strainFamilyKey" type="int" indexed="true" stored="true"/>
    <field name="strainNames" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="strainType" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="freqM" type="string" indexed="true" stored="true" />
    <field name="freqF" type="string" indexed="true" stored="true" />
    <field name="freqX" type="string" indexed="true" stored="true" />
    <field name="freqU" type="string" indexed="true" stored="true" />
+   <field name="freqAll" type="string" indexed="true" stored="true" />
    <field name="agent" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="agentType" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="pathologyImages" type="int" indexed="true" stored="true"/>
@@ -137,7 +139,7 @@
    <field name="authors" type="string" indexed="true" stored="false" multiValued="true"/>
    <field name="journal" type="string" indexed="true" stored="false" multiValued="true"/>
    <field name="year" type="int" indexed="true" stored="false" multiValued="true"/>
-   <field name="citation" type="string" indexed="false" stored="true" multiValued="true"/>
+   <field name="citation" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="title" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="abstract" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="metastatic" type="boolean" indexed="true" stored="true"/>
@@ -150,7 +152,6 @@
    <field name="strainMarker" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="strainGenotype" type="string" indexed="true" stored="true" multiValued="true"/>
    <field name="strainGenotypeNoHTML" type="string" indexed="true" stored="true" multiValued="true"/>
-   <field name="freqNum" type="float" indexed="true" stored="true" />
    <field name="freqMax" type="float" indexed="true" stored="true" />
    <field name="freqMin" type="float" indexed="true" stored="true" />
    <field name="freqNumM" type="float" indexed="true" stored="true" />
