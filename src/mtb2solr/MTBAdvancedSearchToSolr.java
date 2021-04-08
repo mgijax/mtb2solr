@@ -93,13 +93,13 @@ public class MTBAdvancedSearchToSolr {
 
         if (docs != null && docs.size() > 40000) {
 
-            System.out.println("Deleting existing docs");
+       //     System.out.println("Deleting existing docs");
 
-            idx.delete();
+       //     idx.delete();
 
             System.out.println("Sending " + docs.size() + " docs to Indexer for " + props.getProperty("solr_url"));
 
-            idx.writeDocs(docs);
+       //     idx.writeDocs(docs);
         } else {
             System.out.print("Quitting. No changes made to solr. Only " + docs.size() + " docs generated from MTB ");
 
@@ -1477,6 +1477,10 @@ public class MTBAdvancedSearchToSolr {
         String mtb_jdbc_driver = "org.postgresql.Driver";
         String mtb_jdbc_url = "jdbc:postgresql://bhmtbdb01:5432/mtb";
         String mtb_jdbc_user = "mtb";
+            
+//        String mtb_jdbc_driver = "org.postgresql.Driver";
+//        String mtb_jdbc_url = "jdbc:postgresql://localhost:5432/mtb";
+//        String mtb_jdbc_user = "mtb";
         String mtb_jdbc_password = props.getProperty("db_pwd");
         //String mtb_jdbc_password = "";
 
