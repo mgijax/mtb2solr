@@ -15,7 +15,7 @@ import org.apache.solr.common.SolrInputDocument;
 import org.jax.mgi.mtb.dao.custom.mtb.MTBStrainTumorSummaryDTO;
 import org.jax.mgi.mtb.dao.mtb.DAOManagerMTB;
 
-import org.apache.log4j.*;
+//import org.apache.log4j.*;
 
 /**
  *
@@ -59,7 +59,7 @@ public class MTBAdvancedSearchToSolr {
     private HashMap<Integer, String> singleMutantModels = new HashMap();
     private HashMap<Integer, ArrayList<String>> strainMutationTypeMap = new HashMap();
     private HashMap<String, ArrayList<String>> tumorMutationTypeMap = new HashMap();
-    static Logger logger = Logger.getLogger(MTBAdvancedSearchToSolr.class);
+   // static Logger logger = org.apache.logging.log4j.LogManager.getLogger(MTBAdvancedSearchToSolr.class);
     private static int minFreqNum = 80;
     private static int minColonySize = 20;
     private HashMap<String, String> minFreqColony = new HashMap();
@@ -72,34 +72,37 @@ public class MTBAdvancedSearchToSolr {
     public static void main(String[] args) {
 
         
-        Logger.getRootLogger().setLevel(Level.ERROR);
+    //    Logger.getRootLogger().setLevel(Level.ERROR);
         
         try{
             props.load(MTBAdvancedSearchToSolr.class.getResourceAsStream("mtb2solr.properties")); 
-           
+        
+          
+            
         }catch(Exception e){
-            System.out.println("Unable to load properties exiting");
+            System.out.println("Unable to load properties. Exiting");
             e.printStackTrace();
             System.exit(0);
         }
-        BasicConfigurator.configure();
+   //     BasicConfigurator.configure();
 
         MTBAdvancedSearchToSolr m2s = new MTBAdvancedSearchToSolr();
-                
-        Collection<SolrInputDocument> docs = m2s.buildDocs();
-                
   
-          Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
+        Collection<SolrInputDocument> docs = m2s.buildDocs();
+        
+        System.out.println("Connecting to "+props.getProperty("solr_url"));
+                
+        Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
 
-        if (docs != null && docs.size() > 40000) {
+        if (docs != null && docs.size() > 60000) {
 
-       //     System.out.println("Deleting existing docs");
+            System.out.println("Deleting existing docs");
 
-       //     idx.delete();
+            idx.delete();
 
             System.out.println("Sending " + docs.size() + " docs to Indexer for " + props.getProperty("solr_url"));
 
-       //     idx.writeDocs(docs);
+            idx.writeDocs(docs);
         } else {
             System.out.print("Quitting. No changes made to solr. Only " + docs.size() + " docs generated from MTB ");
 
@@ -198,7 +201,15 @@ public class MTBAdvancedSearchToSolr {
 
                 String tClassification = tumor.getTumorClassName();
                 
-                doc.addField("tumorClassification", tClassification);
+              
+                if(tClassification.equals(tumorClassificationParentMap.get(tumor.getTumorClassName()))){
+                    doc.addField("tumorClassification", tClassification+" - "+tClassification);
+                }else{
+                    doc.addField("tumorClassification", tClassification);
+                }
+                
+                doc.addField("tcParent", tumorClassificationParentMap.get(tumor.getTumorClassName()));
+                
                 doc.addField("strain", tumor.getStrainName());
                 doc.addField("strainKey", tumor.getStrainKey());
                 doc.addField("strainFamilyKey", strainFamilyKeyMap.get(tumor.getStrainKey()));
@@ -208,11 +219,26 @@ public class MTBAdvancedSearchToSolr {
                 for(String treatment : treatments){
                     doc.addField("agentType",treatment.trim());
                 }
-                doc.addField("tcParent", tumorClassificationParentMap.get(tumor.getTumorClassName()));;
+                
                 doc.addField("organAffected", tumor.getOrganAffectedName());
-                doc.addField("organOrigin", oo.trim());
+                
                 doc.addField("organOriginKey", tumor.getOrganOfOriginKey());
+                
+                  // for  organ origin
+                // where there are parent child terms we want to exclude
+                // the child term that matches the parent term to prevent redundant facets 
+                
+                if(oo.trim().equals(organParentMap.get(tumor.getOrganOfOriginKey() + "")[0])){
+                   doc.addField("organOrigin", oo.trim()+" - "+oo.trim());
+                    
+                }else{
+                   doc.addField("organOrigin", oo.trim());
+                }
+
+           //     doc.addField("organOrigin", oo.trim());
+                
                 doc.addField("organOriginParent", organParentMap.get(tumor.getOrganOfOriginKey() + "")[0]);
+                
                 doc.addField("organOriginParentKey", organParentMap.get(tumor.getOrganOfOriginKey() + "")[1]);
                 
                 
@@ -225,9 +251,8 @@ public class MTBAdvancedSearchToSolr {
                         for(String name : strainNameMap.get(tumor.getStrainKey())){
                             if(!deHTML(name).equals(tumor.getStrainName())){
                                 addUniqueField(doc,"strainNames",deHTML(name)+" ("+tumor.getStrainName()+")");
-                            }else{
-                                // name is same as offical name
-                                addUniqueField(doc,"strainNames",deHTML(name));
+                            }else{                  
+                               addUniqueField(doc,"strainNames",deHTML(name));
                             }
                
                             
@@ -1334,6 +1359,10 @@ public class MTBAdvancedSearchToSolr {
         }
 
     }
+
+    // The follow tumor classifications are excluded from the human tissue search results
+    // Atypia, Cyst, Dysplasia, Foci, Hyperplasia, Lesion, Metaplasia, 
+    // Preneoplastic lesion, Squamous cell hyperplasia, Nevus and Transitional cell hyperplasia
 
     private void loadExcludeTumorClassificationForModels() {
 
