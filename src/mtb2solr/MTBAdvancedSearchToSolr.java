@@ -90,6 +90,7 @@ public class MTBAdvancedSearchToSolr {
   
         Collection<SolrInputDocument> docs = m2s.buildDocs();
         
+        
         System.out.println("Connecting to "+props.getProperty("solr_url"));
                 
         Indexer idx = Indexer.getInstance(props.getProperty("solr_url"));
@@ -450,9 +451,16 @@ public class MTBAdvancedSearchToSolr {
             PreparedStatement ps = conn.prepareStatement(query.toString());
 
             int docCount = 0;
-            for (SolrInputDocument doc : docs) {
+            loop: for (SolrInputDocument doc : docs) {
                 docCount++;
 
+                int maxTest = 10000;
+                // for local testing only dont for get to remove
+                if(docCount > maxTest){
+                    System.out.println("quitting after getting extra data for "+maxTest+" records");
+                    break loop;
+                }
+                
                 if (docCount % 50 == 0) {
                     System.out.println("Loaded extra data for " + docCount + " records.");
                 }
@@ -461,6 +469,7 @@ public class MTBAdvancedSearchToSolr {
                     System.out.println("Resetting postgres connection to prevent timeout");
                     conn.close();
                     conn = manager.getConnection();
+                 
                 }
 
                 StringBuilder tfks = new StringBuilder("(");
